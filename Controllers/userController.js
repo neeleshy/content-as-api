@@ -23,19 +23,17 @@ export const registerUser = async (req, res) => {
 
     // 3. Check if max user limit reached
     const userCount = await User.countDocuments({ organizationKey });
-    if (userCount >= organization.maxUsers) {
+    const existingUser = await User.findOne({
+      userID: user_id,
+      organizationKey,
+    });
+
+    if (userCount >= organization.maxUsers && !existingUser) {
       return res
         .status(403)
         .json({ error: "User limit exceeded for this organization" });
     }
 
-    // 4. Check if user is already registered
-    const existingUser = await User.findOne({ userID: user_id, organizationKey });
-    if (existingUser) {
-      return res.status(409).json({ error: "User is already registered" });
-    }
-
-    // 5. Generate tokens
     const payload = { organizationKey, userID: user_id, userAgent };
     const accessToken = jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: "30m",
@@ -44,27 +42,64 @@ export const registerUser = async (req, res) => {
       expiresIn: "7d",
     });
 
-    // 6. Save user with device object
-    const newUser = new User({
-      userID: user_id,
-      organizationKey,
-      devices: [
-        {
-          userAgent,
-          refreshToken,
+    // 4. Check if user is already registered
+    if (existingUser) {
+      const deviceIndex = existingUser.devices.findIndex(
+        (d) => d.userAgent === userAgent
+      );
+
+      if (
+        deviceIndex === -1 &&
+        organization.maxDevices <= existingUser.devices.length
+      ) {
+        return res
+          .status(403)
+          .json({ error: "Device limit exceeded for this user" });
+      } else if (deviceIndex !== -1) {
+        existingUser.devices[deviceIndex].refreshToken = refreshToken;
+        await existingUser.save();
+        return res.status(200).json({
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+          lastUsedAt: new Date(),
+        });
+      } else if (organization.maxDevices > existingUser.devices.length) {
+        existingUser.devices.push({ userAgent, refreshToken });
+        await existingUser.save();
+        return res.status(200).json({
+          accessToken: accessToken,
+          refreshToken: refreshToken,
           createdAt: new Date(),
           lastUsedAt: new Date(),
-        },
-      ],
-    });
-    await newUser.save();
+        });
+      }
+    }
 
-    // 7. Send response
-    return res.status(201).json({
-      accessToken,
-      refreshToken,
-      message: "User registered successfully",
-    });
+    // 5. Generate tokens
+
+    // 6. Save user with device object
+    if (!existingUser) {
+      const newUser = new User({
+        userID: user_id,
+        organizationKey,
+        devices: [
+          {
+            userAgent,
+            refreshToken,
+            createdAt: new Date(),
+            lastUsedAt: new Date(),
+          },
+        ],
+      });
+      await newUser.save();
+
+      // 7. Send response
+      return res.status(201).json({
+        accessToken,
+        refreshToken,
+        message: "User registered successfully",
+      });
+    }
   } catch (err) {
     console.error("Error in registerUser:", err);
     return res.status(500).json({ error: "Internal server error" });
@@ -126,9 +161,15 @@ export const refreshToken = async (req, res) => {
     if (deviceIndex !== -1) {
       // Replace token for existing device
       user.devices[deviceIndex].refreshToken = newRefreshToken;
+      user.devices[deviceIndex].lastUsedAt = new Date();
     } else {
       // Register new device
-      user.devices.push({ agent: userAgent, token: newRefreshToken });
+      user.devices.push({
+        userAgent,
+        refreshToken: newRefreshToken,
+        createdAt: new Date(),
+        lastUsedAt: new Date(),
+      });
     }
 
     await user.save();
