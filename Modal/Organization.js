@@ -13,6 +13,10 @@ const organizationSchema = new mongoose.Schema({
     unique: true,
     length: 50,
   },
+  maxUsers: {
+    type: Number,
+    required: true,
+  },
   maxDevices: {
     type: Number,
     required: true,

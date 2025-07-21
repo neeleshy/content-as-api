@@ -1,0 +1,92 @@
+Solution: Our client is going to be any organization which has its own application in which they server video content. We have video content we will put that in our VdoChiper account and share video id list with our client than client application will request our server for playable URL.
+
+Security:
+1. Same user can consume videos on organization define user devices limit.
+
+Constrant:
+1. No control over client application we have to just respond with playable URL.
+
+Logic:
+step 1:
+Client organization will get register on our server.
+
+Method POST /organizations
+body: 1. Name 2. Max user limit 3. device limit per user
+Response: Organization API Key
+
+step 2:
+Client end user will register itself to our server
+
+Method POST /tokens
+Header x-organization-key : <Organization API Key>
+body: {userID : <unique user identifire>}
+
+if (Organization Max user limit) {
+    return error "limit exceeded no new users can be registed"
+}
+
+if (userID is registered in this organization){
+    return error "user is already registered"
+}
+
+access token = jwt.generate(organization_key, userId, user-agent) //30min validity
+refresh token = jwt.generate(organization_key, userId, user-agent) //7day
+
+mongo.users.save({userID, organization_key, refresh_token, devices: [user-agent]})
+response both tokens
+
+step 3:
+End user will request for playable url using access token and videoID
+
+Method GET /video/<video id>
+Authhorization: <access token>
+
+if (!jwt.verify(access_token)) {
+    return err "token expired"
+    // user have to call refresh token api: /refresh to get new access and refresh token.
+}
+
+extract organization_key, userId, user-agent from token
+
+checkes 1. organization_key exist // return err if fail
+        2. userid is register is that organisation // return err if fail
+        3. is user-agent presents in the user.devices if present ok else check if(user.devices.length < organization.max_device_limit){ add new user-agent} else {return error "device limit exceeded"}
+
+{ otp, playinfo } = call Video chiper API and get data.
+url = "http://------------------/otp/playinfo"
+
+response url
+
+step 4:
+if access token is expired
+
+Method GET /refresh
+Authhorization: <refresh token>
+
+if (!jwt.verify(refresh_token)) {
+    return err "token expired"
+    // user have to call refresh token api: /refresh to get new access and refresh token.
+}
+
+if (!users.mongo.find({refresh_token})) return err "no user is registed with this token"
+
+extract organization_key, userId, user-agent from token
+
+access token = jwt.generate(organization_key, userId, user-agent) // 30min validity
+refresh token = jwt.generate(organization_key, userId, user-agent) // 7day
+
+mongo.users.find({userID, organization_key}).update({refresh_token, user-agent : req.user-agent})
+response both tokens
+
+
+
+
+Completed Task:
+1. Content as API Initial product development and demo with marketing and sales team.
+2. Tizen app setup, code and development flow KT to vinay and rajat.
+3. Resolved all the pending bugs of Tizen app.
+4. Implemneted replecemnet of dynamic link functionality in super app web also put it live on test server.
+
+Pending Task:
+1. Content as API changed requirement development.
+2. Tizen store release and build creation KT to vinay.

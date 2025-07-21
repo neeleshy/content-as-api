@@ -1,88 +1,62 @@
+import jwt from "jsonwebtoken";
 import axios from "axios";
 import Organization from "../Modal/Organization.js";
-import Device from "../Modal/Device.js";
+import User from "../Modal/Users.js";
 
-export const getVideoUrlById = async (req, res) => {
+export const getPlayableUrl = async (req, res) => {
   try {
-    const videoId = req.params.videoId;
-    const organization_key = req.headers["x-organization-key"];
-    const ip = req.headers["x-forwarded-for"] || req.ip;
-    const deviceInactiveTimeout = 48 * 60 * 60 * 1000;
+    const { videoId } = req.params;
+    const accessToken = req.headers.authorization;
+    const userAgent = req.headers["user-agent"] || req.get("User-Agent");
+    const ip =
+      req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+      req.connection.remoteAddress;
 
-    if (!videoId || !organization_key) {
+    // 1. Verify token
+    let payload;
+    try {
+      payload = jwt.verify(accessToken, process.env.JWT_SECRET);
+    } catch (err) {
       return res
-        .status(400)
-        .json({ message: "Missing videoId or organization_key" });
+        .status(401)
+        .json({ message: "Access token expired or invalid" });
     }
 
+    const { userID, organizationKey } = payload;
+
+    // 2. Check organization
     const organization = await Organization.findOne({
-      apiKey: organization_key,
+      apiKey: organizationKey,
     });
-
     if (!organization) {
-      return res.status(401).json({ message: "Invalid organization_key" });
+      return res.status(404).json({ message: "Organization not found" });
     }
 
-    const activeDevicesCount = await Device.countDocuments({
-      organizationId: organization._id,
-      isActive: true,
-    });
+    // 3. Check user
+    const user = await User.findOne({ userID, organizationKey });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ message: "User not found in organization" });
+    }
 
-    let device = await Device.findOne({ ip, organizationId: organization._id });
-    const isDeviceLimitReached = activeDevicesCount >= organization.maxDevices;
+    // 4. Device check: allow based on (userAgent + IP) combo
+    const currentDevice = userAgent;
+    const deviceIndex = user.devices.findIndex(
+      (d) => d.userAgent === currentDevice
+    );
+    const deviceExists = deviceIndex !== -1;
 
-    // Helper to deactivate the oldest inactive device (older than 48 hrs)
-    const replaceOldestInactiveDeviceIfAny = async () => {
-      const oldDevices = await Device.find({
-        organizationId: organization._id,
-        isActive: true,
-        lastAccessed: { $lt: new Date(Date.now() - deviceInactiveTimeout) },
-      }).sort({ lastAccessed: 1 }); // oldest first
-
-      if (!oldDevices.length) return false;
-
-      // deactivate oldest one
-      oldDevices[0].isActive = false;
-      await oldDevices[0].save();
-      return true;
-    };
-
-    let shouldSave = false;
-    
-    if (!device) {
-      if (!isDeviceLimitReached || (await replaceOldestInactiveDeviceIfAny())) {
-        device = await Device.create({
-          ip,
-          organizationId: organization._id,
-          isActive: true,
-          lastAccessed: new Date(),
-        });
+    if (!deviceExists) {
+      if (user.devices.length < organization.maxDevices) {
+        user.devices.push(currentDevice);
+        await user.save();
       } else {
-        return res.status(429).json({
-          message: "Device limit exceeded. Try again after 48 hours.",
-        });
+        return res.status(403).json({ message: "Device limit exceeded" });
       }
-    } else if (!device.isActive) {
-      if (!isDeviceLimitReached || (await replaceOldestInactiveDeviceIfAny())) {
-        device.isActive = true;
-        shouldSave = true;
-      } else {
-        return res.status(429).json({
-          message: "Device is inactive and no free slot is available.",
-        });
-      }
-    } else {
-      // Already active device — just update timestamp
-      shouldSave = true;
     }
 
-    // Update lastAccessed once
-    if (shouldSave) {
-      device.lastAccessed = new Date();
-      await device.save();
-    }
-
-    // Request VdoCipher OTP
+    // 5. Call VdoCipher API
     const vdoResponse = await axios.post(
       `https://dev.vdocipher.com/api/videos/${videoId}/otp`,
       {
@@ -105,15 +79,12 @@ export const getVideoUrlById = async (req, res) => {
         .json({ message: "Invalid response from VdoCipher" });
     }
 
+    // 6. Respond with iframe URL
     return res.status(200).json({
       iframeSrc: `https://player.vdocipher.com/v2/?otp=${otp}&playbackInfo=${playbackInfo}`,
     });
   } catch (error) {
-    console.error("getVideoUrlById error:", error);
-
-    const status = error.response?.status || 500;
-    const message = error.response?.data?.message || "Internal Server Error";
-
-    return res.status(status).json({ message });
+    console.error("Error in getPlayableUrl:", error);
+    return res.status(500).json({ message: "Server error" });
   }
 };

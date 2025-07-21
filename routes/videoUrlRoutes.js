@@ -1,10 +1,10 @@
 import express from "express";
 
-import { getVideoUrlById } from "../Controllers/videoUrlController.js";
+import { getPlayableUrl } from "../Controllers/videoUrlController.js";
 
 const router = express.Router();
 
 // Routes
-router.get("/:videoId", getVideoUrlById);
+router.get("/:videoId", getPlayableUrl);
 
 export default router;
