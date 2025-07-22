@@ -4,7 +4,7 @@ import generateApiKey from "../utils/generateApiKey.js";
 // Create a new organization
 export const createOrganization = async (req, res) => {
   try {
-    const { name, max_users, max_devices } = req.body;
+    const { name, max_users, max_devices, period } = req.body;
     const apiKey = generateApiKey();
 
     const org = await Organization.create({
@@ -12,6 +12,7 @@ export const createOrganization = async (req, res) => {
       apiKey,
       maxUsers: max_users,
       maxDevices: max_devices,
+      period,
     });
 
     res.status(201).json({ success: true, data: org });

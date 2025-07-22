@@ -21,6 +21,16 @@ export const registerUser = async (req, res) => {
       return res.status(404).json({ error: "Invalid organization key" });
     }
 
+    const currentDate = new Date();
+    const subscriptionEndDate = new Date(organization.createdAt);
+    subscriptionEndDate.setDate(
+      subscriptionEndDate.getDate() + organization.period
+    );
+
+    if (currentDate > subscriptionEndDate) {
+      return res.status(403).json({ error: "Subscription expired" });
+    }
+
     // 3. Check if max user limit reached
     const userCount = await User.countDocuments({ organizationKey });
     const existingUser = await User.findOne({

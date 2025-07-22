@@ -8,3 +8,8 @@ export const clientHTML = (req, res) => {
   const filePath = path.join(__dirname, "../index.html");
   res.sendFile(filePath);
 };
+
+export const registerHTML = (req, res) => {
+  const filePath = path.join(__dirname, "../registration.html");
+  res.sendFile(filePath);
+};

@@ -32,6 +32,16 @@ export const getPlayableUrl = async (req, res) => {
       return res.status(404).json({ message: "Organization not found" });
     }
 
+    const currentDate = new Date();
+    const subscriptionEndDate = new Date(organization.createdAt);
+    subscriptionEndDate.setDate(
+      subscriptionEndDate.getDate() + organization.period
+    );
+
+    if (currentDate > subscriptionEndDate) {
+      return res.status(403).json({ error: "Subscription expired" });
+    }
+
     // 3. Check user
     const user = await User.findOne({ userID, organizationKey });
     if (!user) {
