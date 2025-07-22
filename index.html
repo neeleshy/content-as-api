@@ -36,7 +36,6 @@
     <script type="text/babel">
       //   const baseURL = "https://4lkpz2tl-3000.inc1.devtunnels.ms/api";
       const baseURL = "https://testcontent.iprep.in/api";
-      const orgAPIKey = "8c3c2b05dfdd6a330db4d9be8971194c24a36757b8c25d3190";
       const videoId = "8c434ce3156937cc70817b22f64c6c61";
       const UserContext = React.createContext();
 
@@ -47,7 +46,9 @@
           e.preventDefault();
 
           const email = e.target.email.value; // Get entered email
+          const key = e.target.key.value; // Get entered email
           localStorage.setItem("userID", email); // Save to localStorage
+          localStorage.setItem("orgAPIKey", key); // Save to localStorage
           setUserId(email); // Set in context
         };
 
@@ -72,6 +73,19 @@
                     id="email"
                     name="email"
                     placeholder="Enter email"
+                    required
+                  />
+                </div>
+                 <div className="mb-3">
+                  <label htmlFor="key" className="form-label">
+                    Enter Key
+                  </label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    id="key"
+                    name="key"
+                    placeholder="Enter key"
                     required
                   />
                 </div>
@@ -112,7 +126,7 @@
         async function registerUser(userId, onSuccess, onError) {
           const url = `${baseURL}/user/register`;
           const headers = {
-            "X-Organization-Key": orgAPIKey,
+            "X-Organization-Key": localStorage.getItem("orgAPIKey"),
             "Content-Type": "application/json",
           };
 
